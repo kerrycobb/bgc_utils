@@ -8,5 +8,6 @@ setup(
     author="Kerry A Cobb",
     author_email="cobbkerry@gmail.com",
     license="MIT",
-    requires=["h5py", "numpy", "pandas", "numpyro", "plotly"]
+    requires=["h5py", "numpy", "pandas", "numpyro", "plotly", "fire"]
+    scripts=["vcf2bgc.py"]
 )
