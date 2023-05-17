@@ -16,7 +16,7 @@ def get_sample_ids(path):
      return lines
 
 def run(vcf_path, samples_path, out_path, parent_pop=True):
-    print("Outputting bgc file to {}.bgc".format(out_path))
+    print("Outputting bgc file to {}".format(out_path))
     samples = get_sample_ids(samples_path)
     vcf = allel.read_vcf(vcf_path, samples=samples, fills=dict(GT=-9))
     arr = allel.GenotypeArray(vcf["calldata/GT"])
