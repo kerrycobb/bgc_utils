@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="bgc",
+    name="bgc-utils",
     version="1.0",
     description="Tools to summarize output from BGC (bayesian genomic clines)",
     url="http://github.com/kerrycobb/bgc_utils",
