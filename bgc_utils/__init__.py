@@ -1,1 +1,1 @@
-from bgc import *
+from .bgc import *

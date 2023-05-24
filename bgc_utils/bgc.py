@@ -4,9 +4,11 @@ import pandas as pd
 import numpyro as no
 import plotly.express as px
 import plotly.graph_objects as go
-from math import sqrt
+import plotly.colors as pcolors
+from scipy.stats import norm
+from collections.abc import Iterable
 
-__all__ = ["BGC", "Posterior", "cline_func", "cline_plot"]
+__all__ = ["BGC", "Posterior", "cline_func", "cline_plot", "outliers"]
 
 class BGC():
     def __init__(self, files, burnin, interval):
@@ -68,8 +70,8 @@ class Posterior():
         if indices is not None:
             data = self.samples[:,indices,:] 
         else:
-            indices = range(data.shape[1])
             data = self.samples 
+            indices = range(data.shape[1])
         dfs = [] 
         for i in range(data.shape[1]):
             df = pd.DataFrame(data[:,i,:].transpose())
@@ -80,7 +82,7 @@ class Posterior():
         df = pd.concat(dfs)   
         return df
 
-    def histogram(self, path, indices=None):
+    def histogram(self, path, indices=None, show=True):
         if self.param_dims == 1:
             if indices is not None:
                 print("Warning: indices arg not used for {} parameter".format(self.param))
@@ -95,10 +97,11 @@ class Posterior():
                     facet_col_spacing=0.01)
                      
         fig.update_layout(legend_title_text="Chain", title=dict(x=0.5))
-        # fig.write_html(path)
-        fig.show() 
+        fig.write_html(path)
+        if show:
+            fig.show() 
 
-    def trace(self, path, indices=None):
+    def trace(self, path, indices=None, show=True):
         if self.param_dims == 1:
             if indices is not None:
                 print("Warning: indices arg not used for {} parameter".format(self.param))
@@ -112,15 +115,16 @@ class Posterior():
                     facet_row_spacing=0.01, facet_col_spacing=0.01)
         fig.update_layout(legend_title_text="Chain", title=dict(x=0.5))
         fig.update_traces(line=dict(width=1))
-        # fig.write_html(path)
-        fig.show()
+        fig.write_html(path)
+        if show:
+            fig.show()
 
     def covered(self, x):
         ## Returns list of booleans
         ## True if x is covered by credible interval
         ## False if x is not covered by credible interval
-        lower = "{}%".format(self.lower_quantile * 100)
-        upper = "{}%".format(self.upper_quantile * 100)
+        lower = "{}%".format(self.bgc.lower_quantile * 100)
+        upper = "{}%".format(self.bgc.upper_quantile * 100)
         df = self.summary
         return (x > df[lower]) & (x < df[upper])
 
@@ -131,24 +135,56 @@ def cline_func(a, b, h):
     thetas[thetas < 0] = 0
     return thetas
 
-# def cline_plot(alpha, beta, alpha_outliers=None, beta_outliers=None):
-def cline_plot(alpha, beta, outliers, color="red"):
+def outliers(param, tau, interval, central_tendancy="median"):
+#     ## param: posterior object for alpha or beta parameter
+#     ## tau: posterior object for alpha tau or alpha beta estimates
+#     ## interval: interval of normal probability density function 
+#     ## central_tendancy: "median" or "mean"
+    lower_quantile = round((1.0 - interval) / 2, 3)
+    upper_quantile = 1 - lower_quantile
+    tau_central = tau.summary.iloc[0][central_tendancy]
+    lower = norm.ppf(lower_quantile, scale=1/tau_central)
+    upper = norm.ppf(upper_quantile, scale=1/tau_central)
+    param_central = param.summary[central_tendancy]
+    return (param_central < lower) | (param_central > upper)
+
+def cline_plot(alpha, beta, outliers=None, outlier_label=None, outlier_colors=None,
+        label="Neutral", color="lightslategray"):
+    ## outliers: a pandas boolean series or python list containing pandas boolean series
+    assert len(alpha) == len(beta)
+    if not isinstance(outliers, list):
+        outliers = [outliers]
     x = np.linspace(0, 1, 100) 
     fig = go.Figure()
-    def add_trace( a, b, color):
+    if outliers is None:
+        alpha0 = alpha
+        beta0 = beta
+    else:
+        outliers0 = np.logical_or.reduce(outliers)
+        alpha0 = alpha[~outliers0].reset_index(drop=True)
+        beta0 = beta[~outliers0].reset_index(drop=True)
+    def add_trace(a, b, name, color):
         for i in range(len(a)): 
-            phi = cline_func(a[i], b[i], x)  
-            fig.add_trace(go.Scatter(x=x, y=phi, mode="lines", line=dict(color=color)))
-    add_trace(
-        alpha[~outliers].reset_index(drop=True),
-        beta[~outliers].reset_index(drop=True),
-        color="lightslategray")    
-    add_trace(
-        alpha[outliers].reset_index(drop=True),
-        beta[outliers].reset_index(drop=True),
-        color=color)    
+            showlegend = True if i == 0 else False
+            fig.add_trace(go.Scatter(x=x, y=cline_func(a[i], b[i], x), 
+                    name=name, legendgroup=name, showlegend=showlegend,
+                    line=dict(color=color), mode="lines"))
+
+    add_trace(alpha0, beta0, label, color)
+    for i in range(len(outliers)):
+        alpha1 = alpha[outliers[i]].reset_index(drop=True)
+        beta1 = beta[outliers[i]].reset_index(drop=True) 
+        if outlier_label is None:
+            lab = f"Outlier {i+1}"
+        else: 
+            lab[i]
+        if outlier_colors is None:
+            col = pcolors.DEFAULT_PLOTLY_COLORS[i+1]
+        else:
+            col = outlier_colors[i]
+        add_trace(alpha1, beta1, lab, col)
     fig.update_layout(
-        showlegend=False,
+        showlegend=True,
         yaxis_range=[0,1],
         xaxis_range=[0,1],
         xaxis_title="Hybrid Index",
@@ -156,82 +192,3 @@ def cline_plot(alpha, beta, outliers, color="red"):
         width=1000,
         height=1000)
     fig.show()
-
-    # # Non outlier
-    # add_trace( 
-    #     alpha[~alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     beta[~alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     "lightslategray")
-    # # alpha outlier
-    # add_trace(
-    #     alpha[alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     beta[alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     "orange")
-    # # beta outlier
-    # add_trace(
-    #     alpha[~alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     beta[~alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     "red")
-    # # alpha and beta outlier
-    # add_trace(
-    #     alpha[alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     beta[alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     "green")
-    # fig.update_layout(
-    #     showlegend=False,
-    #     yaxis_range=[0,1],
-    #     xaxis_range=[0,1],
-    #     xaxis_title="Hybrid Index",
-    #     yaxis_title="Prob. Ancestry",
-    #     width=1000,
-    #     height=1000,
-    # )
-    # fig.show()
-
-
-
-    # assert len(alpha) == len(beta)
-    # if alpha_outliers is None:
-    #     alpha_outliers = pd.Series(False, index=range(len(alpha)))
-    # else:
-    #     assert len(alpha) == len(alpha_outliers)
-    # if beta_outliers is None:
-    #     beta_outliers = pd.Series(False, index=range(len(beta)))
-    # else:
-    #     assert len(alpha) == len(beta_outliers)
-    # x = np.linspace(0, 1, 100) 
-    # fig = go.Figure()
-    # def add_trace( a, b, color):
-    #     for i in range(len(a)): 
-    #         phi = cline_func(a[i], b[i], x)  
-    #         fig.add_trace(go.Scatter(x=x, y=phi, mode="lines", line=dict(color=color)))
-    # # Non outlier
-    # add_trace( 
-    #     alpha[~alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     beta[~alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     "lightslategray")
-    # # alpha outlier
-    # add_trace(
-    #     alpha[alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     beta[alpha_outliers & ~beta_outliers].reset_index(drop=True),
-    #     "orange")
-    # # beta outlier
-    # add_trace(
-    #     alpha[~alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     beta[~alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     "red")
-    # # alpha and beta outlier
-    # add_trace(
-    #     alpha[alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     beta[alpha_outliers & beta_outliers].reset_index(drop=True),
-    #     "green")
-    # fig.update_layout(
-    #     showlegend=False,
-    #     yaxis_range=[0,1],
-    #     xaxis_range=[0,1],
-    #     xaxis_title="Hybrid Index",
-    #     yaxis_title="Prob. Ancestry",
-    #     width=1000,
-    #     height=1000,
-    # )
-    # fig.show()
