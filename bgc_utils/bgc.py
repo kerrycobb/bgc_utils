@@ -82,7 +82,7 @@ class Posterior():
         df = pd.concat(dfs)   
         return df
 
-    def histogram(self, path, indices=None, show=True):
+    def histogram(self, indices=None):
         if self.param_dims == 1:
             if indices is not None:
                 print("Warning: indices arg not used for {} parameter".format(self.param))
@@ -97,11 +97,9 @@ class Posterior():
                     facet_col_spacing=0.01)
                      
         fig.update_layout(legend_title_text="Chain", title=dict(x=0.5))
-        fig.write_html(path)
-        if show:
-            fig.show() 
+        return fig
 
-    def trace(self, path, indices=None, show=True):
+    def trace(self, indices=None):
         if self.param_dims == 1:
             if indices is not None:
                 print("Warning: indices arg not used for {} parameter".format(self.param))
@@ -115,9 +113,7 @@ class Posterior():
                     facet_row_spacing=0.01, facet_col_spacing=0.01)
         fig.update_layout(legend_title_text="Chain", title=dict(x=0.5))
         fig.update_traces(line=dict(width=1))
-        fig.write_html(path)
-        if show:
-            fig.show()
+        return fig
 
     def covered(self, x):
         ## Returns list of booleans
@@ -184,11 +180,31 @@ def cline_plot(alpha, beta, outliers=None, outlier_label=None, outlier_colors=No
             col = outlier_colors[i]
         add_trace(alpha1, beta1, lab, col)
     fig.update_layout(
-        showlegend=True,
+        plot_bgcolor="white",
+        width=500,
+        height=500,
+        margin=dict(l=0,r=0,b=0,t=0),
         yaxis_range=[0,1],
         xaxis_range=[0,1],
-        xaxis_title="Hybrid Index",
-        yaxis_title="Prob. Ancestry",
-        width=1000,
-        height=1000)
-    fig.show()
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01))
+    fig.update_xaxes(
+        title_text="Hybrid Index",
+        title_font=dict(size=20),
+        showline=True,
+        ticks="outside",
+        linecolor="black",
+        linewidth=1)
+    fig.update_yaxes(
+        title_text="Prob. Ancestry",
+        title_font=dict(size=20),
+        showline=True,
+        ticks="outside", 
+        linecolor="black",
+        linewidth=1)
+
+    return fig
